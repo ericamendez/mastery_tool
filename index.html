@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Active Recall Study</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <h1>Active Recall Study Helper</h1>
+        <p class="subtitle">
+          Paste text or drop a PDF, DOCX, or TXT file to generate 5-15 recall questions.
+        </p>
+      </header>
+
+      <section class="input-section">
+        <div class="input-area" id="input-area">
+          <textarea
+            id="text-input"
+            class="text-input"
+            placeholder="Paste or type text here, or drop a file anywhere in this box..."
+          ></textarea>
+          <div class="input-actions">
+            <input
+              id="file-input"
+              class="file-input"
+              type="file"
+              accept=".pdf,.txt,.docx"
+            />
+            <button id="file-button" class="secondary-button" type="button">
+              Upload a file
+            </button>
+          </div>
+        </div>
+        <p class="helper-text">
+          We do not store your content. Supported types: PDF, DOCX, TXT.
+        </p>
+      </section>
+
+      <section class="actions">
+        <button id="generate-button" class="primary-button" type="button">
+          Generate Questions
+        </button>
+        <span id="status-message" class="status-message" aria-live="polite"></span>
+      </section>
+
+      <section class="results">
+        <h2>Questions</h2>
+        <ol id="question-list" class="question-list"></ol>
+      </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+    <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
