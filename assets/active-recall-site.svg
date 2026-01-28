@@ -1,0 +1,14 @@
+<svg width="1200" height="675" viewBox="0 0 1200 675" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="675" fill="#f5f7fb"/>
+  <rect x="120" y="90" width="960" height="495" rx="24" fill="#ffffff" stroke="#e3e9f4" stroke-width="2"/>
+  <rect x="170" y="140" width="520" height="36" rx="10" fill="#e7ecf6"/>
+  <rect x="170" y="200" width="860" height="210" rx="16" fill="#ffffff" stroke="#9fb1d0" stroke-width="3" stroke-dasharray="10 10"/>
+  <rect x="200" y="230" width="800" height="120" rx="12" fill="#f8fafc" stroke="#d6deeb"/>
+  <rect x="200" y="370" width="160" height="36" rx="18" fill="#e7ecf6"/>
+  <rect x="170" y="435" width="200" height="42" rx="21" fill="#3658c6"/>
+  <rect x="170" y="500" width="860" height="60" rx="14" fill="#ffffff" stroke="#e3e9f4"/>
+  <text x="170" y="128" font-family="Segoe UI, Tahoma, sans-serif" font-size="22" fill="#1f2a44">Active Recall Study Helper</text>
+  <text x="200" y="260" font-family="Segoe UI, Tahoma, sans-serif" font-size="18" fill="#4b5568">Paste text here, or drop a PDF/DOCX/TXT file</text>
+  <text x="190" y="462" font-family="Segoe UI, Tahoma, sans-serif" font-size="16" fill="#ffffff">Generate Questions</text>
+  <text x="190" y="538" font-family="Segoe UI, Tahoma, sans-serif" font-size="16" fill="#4b5568">Questions appear here</text>
+</svg>
