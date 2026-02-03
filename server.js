@@ -14,14 +14,39 @@ app.use(express.static("."));
 const buildPrompt = (text) => [
   {
     role: "system",
-    content:
-      "You are a study assistant. Generate 5-15 active recall questions based on the provided text.",
+    content: `You are a study assistant helping students understand academic papers and technical texts. Generate 5-15 questions based on the provided text.
+
+Focus on:
+- Main arguments and key takeaways
+- Core concepts and their relationships
+- The "big picture" and why it matters
+- Practical implications or applications
+
+Avoid:
+- Highly technical minutiae or specific numbers/statistics
+- Jargon-heavy questions that test vocabulary rather than understanding
+- Minor details that don't support the main ideas
+
+Create a mix of question types:
+- About half should be open-ended recall questions (type: "open")
+- About half should be multiple choice questions (type: "multiple_choice") with exactly 4 options and one correct answer
+
+For multiple choice questions, make the distractors plausible but clearly incorrect to someone who understood the material. Vary the position of the correct answer.`,
   },
   {
     role: "user",
     content: text,
   },
 ];
+
+const shuffleArray = (array) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
 
 const parseQuestions = (content) => {
   if (!content) {
@@ -30,20 +55,21 @@ const parseQuestions = (content) => {
 
   try {
     const parsed = JSON.parse(content);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((item) => typeof item === "string" && item.trim());
-    }
     if (parsed && Array.isArray(parsed.questions)) {
-      return parsed.questions.filter((item) => typeof item === "string" && item.trim());
+      return parsed.questions.filter((item) => {
+        if (!item || !item.type || !item.question) return false;
+        if (item.type === "open") return true;
+        if (item.type === "multiple_choice") {
+          return item.options && item.options.length === 4 && item.correctAnswer;
+        }
+        return false;
+      });
     }
   } catch (error) {
-    // Fall back to line parsing if JSON parse fails.
+    // Fall back to empty array if JSON parse fails.
   }
 
-  return content
-    .split("\n")
-    .map((line) => line.replace(/^\d+[\).\s-]+/, "").trim())
-    .filter(Boolean);
+  return [];
 };
 
 const requestQuestions = async (text) => {
@@ -69,7 +95,23 @@ const requestQuestions = async (text) => {
             properties: {
               questions: {
                 type: "array",
-                items: { type: "string" },
+                items: {
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      enum: ["open", "multiple_choice"],
+                    },
+                    question: { type: "string" },
+                    options: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                    correctAnswer: { type: "string" },
+                  },
+                  required: ["type", "question"],
+                  additionalProperties: false,
+                },
               },
             },
             required: ["questions"],
@@ -103,7 +145,7 @@ app.post("/api/questions", async (req, res) => {
     if (!questions.length) {
       return res.status(502).json({ error: "No questions returned from the LLM." });
     }
-    return res.json({ questions: questions.slice(0, 15) });
+    return res.json({ questions: shuffleArray(questions).slice(0, 15) });
   } catch (error) {
     return res.status(500).json({ error: error.message || "LLM request failed." });
   }

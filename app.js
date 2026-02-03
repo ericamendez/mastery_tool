@@ -24,12 +24,79 @@ const clearQuestions = () => {
   questionList.innerHTML = "";
 };
 
+const escapeHtml = (text) => {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+};
+
+const handleOptionClick = (event) => {
+  const btn = event.currentTarget;
+  const isCorrect = btn.dataset.correct === "true";
+  const questionCard = btn.closest(".mc-question");
+  const allOptions = questionCard.querySelectorAll(".mc-option");
+  const feedback = questionCard.querySelector(".mc-feedback");
+
+  allOptions.forEach((opt) => {
+    opt.disabled = true;
+    if (opt.dataset.correct === "true") {
+      opt.classList.add("correct");
+    }
+  });
+
+  if (isCorrect) {
+    btn.classList.add("selected-correct");
+    feedback.textContent = "Correct! 🎉";
+    feedback.className = "mc-feedback correct";
+  } else {
+    btn.classList.add("selected-wrong");
+    feedback.textContent = "Not quite. The correct answer is highlighted.";
+    feedback.className = "mc-feedback incorrect";
+  }
+};
+
 const renderQuestions = (questions) => {
   questionList.innerHTML = "";
-  questions.forEach((question) => {
-    const item = document.createElement("li");
-    item.textContent = question;
+  questions.forEach((q, index) => {
+    const item = document.createElement("div");
+    item.className = "question-item";
+
+    if (q.type === "open") {
+      item.innerHTML = `
+        <div class="question-card open-question">
+          <p class="question-text">${escapeHtml(q.question)}</p>
+        </div>
+      `;
+    } else if (q.type === "multiple_choice") {
+      const optionsHtml = q.options
+        .map(
+          (opt, optIndex) => `
+          <button 
+            type="button" 
+            class="mc-option" 
+            data-correct="${opt === q.correctAnswer}"
+          >
+            <span class="option-letter">${String.fromCharCode(65 + optIndex)}</span>
+            <span class="option-text">${escapeHtml(opt)}</span>
+          </button>
+        `
+        )
+        .join("");
+
+      item.innerHTML = `
+        <div class="question-card mc-question">
+          <p class="question-text">${escapeHtml(q.question)}</p>
+          <div class="mc-options">${optionsHtml}</div>
+          <p class="mc-feedback"></p>
+        </div>
+      `;
+    }
+
     questionList.appendChild(item);
+  });
+
+  document.querySelectorAll(".mc-option").forEach((btn) => {
+    btn.addEventListener("click", handleOptionClick);
   });
 };
 
