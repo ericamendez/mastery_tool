@@ -9,7 +9,7 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
-app.use(express.static("."));
+app.use(express.static("public"));
 
 const buildPrompt = (text) => [
   {
