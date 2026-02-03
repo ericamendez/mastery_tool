@@ -2,7 +2,7 @@
 
 Turn reading into recall practice. This is a static HTML/CSS/Vanilla JS site with an Express backend that calls an LLM to generate 5-15 active-recall questions from pasted text or uploaded files.
 
-![Active Recall Study Helper UI](assets/active-recall-site.svg)
+![Active Recall Study Helper UI](public/assets/active-recall-site.svg)
 
 ## What it does
 - Paste text or drag-and-drop PDF, DOCX, or TXT into a single input area.
