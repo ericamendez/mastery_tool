@@ -5,7 +5,7 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const buildPrompt = (text) => [
   {
     role: "system",
-    content: `You are a study assistant helping students understand academic papers and technical texts. Generate 5-15 questions based on the provided text.
+    content: `You are a study assistant helping students understand academic papers and technical texts. Generate 8-12 questions based on the provided text.
 
 Focus on:
 - Main arguments and key takeaways
@@ -18,46 +18,23 @@ Avoid:
 - Jargon-heavy questions that test vocabulary rather than understanding
 - Minor details that don't support the main ideas
 
-Create a mix of question types:
-- About half should be open-ended recall questions (type: "open")
-- About half should be multiple choice questions (type: "multiple_choice") with exactly 4 options and one correct answer
+Create a mix of question types randomly ordered:
+- About half should be open-ended recall questions
+- About half should be multiple choice questions with exactly 4 options (A, B, C, D) and one correct answer
 
-For multiple choice questions, make the distractors plausible but clearly incorrect to someone who understood the material. Vary the position of the correct answer.`,
+Output as a JSON array of question objects. Each object has:
+- "type": either "open" or "multiple_choice"
+- "question": the question text
+- "options": array of 4 strings (only for multiple_choice)
+- "correctAnswer": the correct option text (only for multiple_choice)
+
+For multiple choice questions, make distractors plausible but clearly wrong to someone who understood the material. Vary the position of the correct answer.`,
   },
   {
     role: "user",
     content: text,
   },
 ];
-
-const shuffleArray = (array) => {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-};
-
-const parseQuestions = (content) => {
-  if (!content) return [];
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed && Array.isArray(parsed.questions)) {
-      return parsed.questions.filter((item) => {
-        if (!item || !item.type || !item.question) return false;
-        if (item.type === "open") return true;
-        if (item.type === "multiple_choice") {
-          return item.options && item.options.length === 4 && item.correctAnswer;
-        }
-        return false;
-      });
-    }
-  } catch (error) {
-    // Fall back to empty array if JSON parse fails.
-  }
-  return [];
-};
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -74,6 +51,11 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
   }
 
+  // Set up SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -84,52 +66,102 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: OPENAI_MODEL,
         messages: buildPrompt(text),
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "question_list",
-            schema: {
-              type: "object",
-              properties: {
-                questions: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      type: { type: "string", enum: ["open", "multiple_choice"] },
-                      question: { type: "string" },
-                      options: { type: "array", items: { type: "string" } },
-                      correctAnswer: { type: "string" },
-                    },
-                    required: ["type", "question"],
-                    additionalProperties: false,
-                  },
-                },
-              },
-              required: ["questions"],
-              additionalProperties: false,
-            },
-          },
-        },
+        stream: true,
         temperature: 0.6,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`LLM request failed: ${errorText}`);
+      res.write(`data: ${JSON.stringify({ error: `LLM request failed: ${errorText}` })}\n\n`);
+      res.end();
+      return;
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim() || "";
-    const questions = parseQuestions(content);
+    let fullContent = "";
+    let sentQuestions = 0;
 
-    if (!questions.length) {
-      return res.status(502).json({ error: "No questions returned from the LLM." });
+    // Process the stream
+    for await (const chunk of response.body) {
+      const lines = chunk.toString().split("\n").filter((line) => line.trim() !== "");
+
+      for (const line of lines) {
+        if (line === "data: [DONE]") {
+          continue;
+        }
+
+        if (line.startsWith("data: ")) {
+          try {
+            const json = JSON.parse(line.slice(6));
+            const content = json.choices?.[0]?.delta?.content || "";
+            fullContent += content;
+
+            // Try to extract complete question objects as they come in
+            const questions = extractCompleteQuestions(fullContent);
+            
+            // Send any new questions we haven't sent yet
+            for (let i = sentQuestions; i < questions.length; i++) {
+              res.write(`data: ${JSON.stringify({ question: questions[i] })}\n\n`);
+              sentQuestions++;
+            }
+          } catch (e) {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
     }
 
-    return res.json({ questions: shuffleArray(questions).slice(0, 15) });
+    // Final parse to catch any remaining questions
+    const finalQuestions = extractCompleteQuestions(fullContent);
+    for (let i = sentQuestions; i < finalQuestions.length; i++) {
+      res.write(`data: ${JSON.stringify({ question: finalQuestions[i] })}\n\n`);
+    }
+
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.end();
   } catch (error) {
-    return res.status(500).json({ error: error.message || "LLM request failed." });
+    res.write(`data: ${JSON.stringify({ error: error.message || "LLM request failed." })}\n\n`);
+    res.end();
   }
 };
+
+// Extract complete question objects from partial JSON
+function extractCompleteQuestions(content) {
+  const questions = [];
+  
+  // Find question objects using regex
+  const questionPattern = /\{\s*"type"\s*:\s*"(open|multiple_choice)"[^{}]*?"question"\s*:\s*"[^"]*"[^{}]*?\}/g;
+  
+  let match;
+  while ((match = questionPattern.exec(content)) !== null) {
+    try {
+      // Try to parse the matched object
+      let objStr = match[0];
+      
+      // Handle potential incomplete objects at the end
+      const parsed = JSON.parse(objStr);
+      
+      // Validate the question object
+      if (parsed.type && parsed.question) {
+        if (parsed.type === "open") {
+          questions.push(parsed);
+        } else if (parsed.type === "multiple_choice" && 
+                   parsed.options && 
+                   parsed.options.length === 4 && 
+                   parsed.correctAnswer) {
+          questions.push(parsed);
+        }
+      }
+    } catch (e) {
+      // Object wasn't complete yet, skip it
+    }
+  }
+  
+  // Deduplicate based on question text
+  const seen = new Set();
+  return questions.filter((q) => {
+    if (seen.has(q.question)) return false;
+    seen.add(q.question);
+    return true;
+  });
+}

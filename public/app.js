@@ -55,52 +55,59 @@ const handleOptionClick = (event) => {
   }
 };
 
-const renderQuestions = (questions) => {
-  questionList.innerHTML = "";
-  questions.forEach((q, index) => {
-    const item = document.createElement("div");
-    item.className = "question-item";
+const renderSingleQuestion = (q) => {
+  const item = document.createElement("div");
+  item.className = "question-item";
+  item.style.opacity = "0";
+  item.style.transform = "translateY(10px)";
 
-    if (q.type === "open") {
-      item.innerHTML = `
-        <div class="question-card open-question">
-          <p class="question-text">${escapeHtml(q.question)}</p>
-        </div>
-      `;
-    } else if (q.type === "multiple_choice") {
-      const optionsHtml = q.options
-        .map(
-          (opt, optIndex) => `
-          <button 
-            type="button" 
-            class="mc-option" 
-            data-correct="${opt === q.correctAnswer}"
-          >
-            <span class="option-letter">${String.fromCharCode(65 + optIndex)}</span>
-            <span class="option-text">${escapeHtml(opt)}</span>
-          </button>
-        `
-        )
-        .join("");
+  if (q.type === "open") {
+    item.innerHTML = `
+      <div class="question-card open-question">
+        <p class="question-text">${escapeHtml(q.question)}</p>
+      </div>
+    `;
+  } else if (q.type === "multiple_choice") {
+    const optionsHtml = q.options
+      .map(
+        (opt, optIndex) => `
+        <button 
+          type="button" 
+          class="mc-option" 
+          data-correct="${opt === q.correctAnswer}"
+        >
+          <span class="option-letter">${String.fromCharCode(65 + optIndex)}</span>
+          <span class="option-text">${escapeHtml(opt)}</span>
+        </button>
+      `
+      )
+      .join("");
 
-      item.innerHTML = `
-        <div class="question-card mc-question">
-          <p class="question-text">${escapeHtml(q.question)}</p>
-          <div class="mc-options">${optionsHtml}</div>
-          <p class="mc-feedback"></p>
-        </div>
-      `;
-    }
+    item.innerHTML = `
+      <div class="question-card mc-question">
+        <p class="question-text">${escapeHtml(q.question)}</p>
+        <div class="mc-options">${optionsHtml}</div>
+        <p class="mc-feedback"></p>
+      </div>
+    `;
+  }
 
-    questionList.appendChild(item);
+  questionList.appendChild(item);
+
+  // Animate in
+  requestAnimationFrame(() => {
+    item.style.transition = "opacity 0.3s ease, transform 0.3s ease";
+    item.style.opacity = "1";
+    item.style.transform = "translateY(0)";
   });
 
-  document.querySelectorAll(".mc-option").forEach((btn) => {
+  // Add click handlers for MC options
+  item.querySelectorAll(".mc-option").forEach((btn) => {
     btn.addEventListener("click", handleOptionClick);
   });
 };
 
-const requestQuestions = async (text) => {
+const requestQuestionsStream = async (text, onQuestion, onError, onDone) => {
   const response = await fetch("/api/questions", {
     method: "POST",
     headers: {
@@ -111,11 +118,49 @@ const requestQuestions = async (text) => {
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    const errorMessage = errorBody.error || "Failed to generate questions.";
-    throw new Error(errorMessage);
+    throw new Error(errorBody.error || "Failed to generate questions.");
   }
 
-  return response.json();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let questionCount = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          
+          if (data.error) {
+            onError(new Error(data.error));
+            return;
+          }
+          
+          if (data.question) {
+            questionCount++;
+            onQuestion(data.question, questionCount);
+          }
+          
+          if (data.done) {
+            onDone(questionCount);
+            return;
+          }
+        } catch (e) {
+          // Skip malformed JSON
+        }
+      }
+    }
+  }
+
+  onDone(questionCount);
 };
 
 const getExtension = (filename) => {
@@ -250,19 +295,36 @@ generateButton.addEventListener("click", async () => {
 
     if (!sourceText) {
       setStatus("Please add text or upload a file first.", true);
+      generateButton.disabled = false;
       return;
     }
 
     setStatus("Generating questions...");
-    const { questions } = await requestQuestions(sourceText);
-    if (!questions?.length) {
-      throw new Error("No questions returned from the server.");
-    }
-    renderQuestions(questions);
-    setStatus(`Generated ${questions.length} questions.`);
+
+    await requestQuestionsStream(
+      sourceText,
+      // onQuestion callback - called for each question as it arrives
+      (question, count) => {
+        renderSingleQuestion(question);
+        setStatus(`Generated ${count} question${count > 1 ? "s" : ""}...`);
+      },
+      // onError callback
+      (error) => {
+        setStatus(error.message || "Unable to generate questions.", true);
+        generateButton.disabled = false;
+      },
+      // onDone callback
+      (totalCount) => {
+        if (totalCount === 0) {
+          setStatus("No questions were generated. Try different content.", true);
+        } else {
+          setStatus(`Done! Generated ${totalCount} questions.`);
+        }
+        generateButton.disabled = false;
+      }
+    );
   } catch (error) {
     setStatus(error.message || "Unable to generate questions.", true);
-  } finally {
     generateButton.disabled = false;
   }
 });
